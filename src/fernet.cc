@@ -31,7 +31,7 @@ inline constexpr byte operator"" _byte(unsigned long long arg) noexcept
 }
 
 // This document describes version 0x80 (currently the only version) of the fernet format.
-static byte constexpr VERSION{128_uint8_t},
+static byte constexpr FERNET_VERSION{128_uint8_t},
     VERSION_SIZE{sizeof(byte)},
     TIME_SIZE{sizeof(std::time_t)},
     NONCE_SIZE{16_uint8_t},
@@ -308,7 +308,7 @@ Fernet::Fernet(Fernet::secure_string const &key) : _key(urlsafe_base64Decode(key
 Fernet::secure_string Fernet::encrypt(Fernet::secure_string const &plain_text,
                                       std::time_t const current_time)
 {
-    assert(VERSION == 128_uint8_t);
+    assert(FERNET_VERSION == 128_uint8_t);
     int64_t time{timestamp_byteswap(current_time)};
     byte_time timestamp_view(&time);
 
@@ -320,7 +320,7 @@ Fernet::secure_string Fernet::encrypt(Fernet::secure_string const &plain_text,
                   HMAC_SIZE);
 
     token.resize(VERSION_SIZE, 0);
-    token[0] = VERSION;
+    token[0] = FERNET_VERSION;
 
     std::span timestamp_range_view{timestamp_view._timestamps_bytes_c, TIME_SIZE};
     std::copy_n(timestamp_range_view.begin(), TIME_SIZE, std::back_inserter(token));
@@ -354,7 +354,7 @@ Fernet::secure_string Fernet::decrypt(Fernet::secure_string const &token,
     assert(version == 128_uint8_t && "Fernet version not know");
 
     if (version not_eq 128_uint8_t or
-        version not_eq VERSION)
+        version not_eq FERNET_VERSION)
         throw std::runtime_error("Fernet version not know");
 
     Fernet::secure_string nonce;

@@ -1,8 +1,11 @@
 cmake_minimum_required(VERSION 3.27)
 
 if("$ENV{Fernet_VERSION}" STREQUAL "")
-  message(WARNING "Setup Fernet_VERSION in your environement variable")
-  set(Fernet_VERSION "0.0.0.0")
+  set(Fernet_VERSION 0.0.0.0)
+  message(
+    WARNING
+      "Setup Fernet_VERSION in your environement variable default ${Fernet_VERSION} will bet set to Fernet_VERSION variable"
+  )
 else()
   set(Fernet_VERSION $ENV{Fernet_VERSION})
 endif("$ENV{Fernet_VERSION}" STREQUAL "")
