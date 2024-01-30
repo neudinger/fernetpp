@@ -1,13 +1,16 @@
 cmake_minimum_required(VERSION 3.27)
 
 if("$ENV{Fernet_VERSION}" STREQUAL "")
-  message(FATAL_ERROR "Setup Fernet_VERSION in your environement variable")
+  message(WARNING "Setup Fernet_VERSION in your environement variable")
+  set(Fernet_VERSION "0.0.0.0")
+else()
+  set(Fernet_VERSION $ENV{Fernet_VERSION})
 endif("$ENV{Fernet_VERSION}" STREQUAL "")
 
 project(
   Fernet
   LANGUAGES CXX
-  VERSION $ENV{Fernet_VERSION}
+  VERSION ${Fernet_VERSION}
   DESCRIPTION "C++ Fernet library"
   HOMEPAGE_URL "https://github.com/neudinger/fernetpp")
 
@@ -91,12 +94,12 @@ set(SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
 file(GLOB SOURCES_LIB ${SRC_DIR}/*.cc)
 file(GLOB SOURCES_EXES ${SRC_DIR}/*.cpp)
 
-
 set(TARGET_NAME_EXE ${PROJECT_NAME}.exe)
 
 add_executable(${TARGET_NAME_EXE} ${SOURCES_LIB} ${SOURCES_EXES})
 target_link_libraries(${TARGET_NAME_EXE} PRIVATE OpenSSL::Crypto)
-target_compile_features(${TARGET_NAME_EXE} PRIVATE cxx_std_${CMAKE_CXX_STANDARD})
+target_compile_features(${TARGET_NAME_EXE}
+                        PRIVATE cxx_std_${CMAKE_CXX_STANDARD})
 
 add_library(${PROJECT_NAME} ${SOURCES_LIB})
 add_library(Fernet::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
