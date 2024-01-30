@@ -13,6 +13,7 @@
 // And with HMAC we can provide authenticated access from both sides.
 // In this case we will use scrypt to generate the encryption key from a salt value and a password.
 // To generate the same encryption key we need the salt value and the password
+
 template <typename T>
 struct zallocator
 {
@@ -66,11 +67,10 @@ public:
 
 typedef struct Fernet
 {
-    // private:
-public:
     using byte = uint8_t;
     using secure_string = std::basic_string<char, std::char_traits<char>, zallocator<char>>;
 
+private:
     secure_string _key;
 
     static inline void init();
