@@ -3,6 +3,13 @@
 #if not defined(FERNET_HH)
 #define FERNET_HH
 
+#include <openssl/crypto.h> // OPENSSL_secure_clear_free
+#include <openssl/evp.h>    // EVP_CIPHER_CTX_FLAG_WRAP_ALLOW
+#include <limits>           // std::numeric_limits
+#include <memory>           // std::bad_alloc
+
+#include <ctime> // std::time_t
+
 // Fernet is a symmetric encryption method which makes sure that the message encrypted cannot be manipulated/read without the key.
 // It uses URL safe encoding for the keys.
 // Fernet also uses 128-bit AES in CBC mode and PKCS7 padding, with HMAC using SHA256 for authentication.
@@ -29,17 +36,19 @@ public:
     pointer address(reference v) const { return &v; }
     const_pointer address(const_reference v) const { return &v; }
 
-    pointer allocate(size_type n, const void *hint = 0)
+    pointer allocate(size_type n /* , const void *hint = 0 */)
     {
         if (n > std::numeric_limits<size_type>::max() / sizeof(T))
             throw std::bad_alloc();
-        return static_cast<pointer>(::operator new(n * sizeof(value_type)));
+        return static_cast<pointer>(OPENSSL_secure_zalloc(n * sizeof(value_type)));
+        // return static_cast<pointer>(::operator new(n * sizeof(value_type)));
     }
 
     void deallocate(pointer p, size_type n)
     {
-        OPENSSL_cleanse(p, n * sizeof(T));
-        ::operator delete(p);
+        OPENSSL_secure_clear_free(p, n * sizeof(T));
+        // OPENSSL_cleanse(p, n * sizeof(T));
+        // ::operator delete(p);
     }
 
     size_type max_size() const
@@ -67,24 +76,10 @@ public:
 
 typedef struct Fernet
 {
-    using byte = uint8_t;
     using secure_string = std::basic_string<char, std::char_traits<char>, zallocator<char>>;
 
 private:
     secure_string _key;
-
-    static inline void init();
-    static inline void nonce_setup(byte *nonce);
-    static inline secure_string AES_128_CBC_decrypt(secure_string const &key,
-                                                    secure_string const &nonce,
-                                                    secure_string const &ctext);
-    static inline secure_string AES_128_CBC_encrypt(secure_string const &key,
-                                                    secure_string const &nonce,
-                                                    secure_string const &ptext);
-    static inline uint64_t timestamp_byteswap(uint64_t const &timestamp);
-    static inline secure_string gen_nonce();
-    static inline secure_string HMAC_SHA256(secure_string const &,
-                                            secure_string const &);
 
 public:
     ~Fernet() = default;
@@ -95,7 +90,7 @@ public:
                           std::time_t current_time = std::time(nullptr));
 
     secure_string decrypt(secure_string const &token,
-                          uint64_t ttl = 0,
+                          int64_t ttl = 0U,
                           std::time_t current_time = std::time(nullptr));
 
 } Fernet;

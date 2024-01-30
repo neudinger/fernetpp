@@ -1,0 +1,16 @@
+{
+    "openssl": {
+        "version": "3.2.0",
+        "comment": "",
+        "url": "https://www.openssl.org/source/openssl-3.2.0.tar.gz",
+        "hash": "SHA256=14c826f07c7e433706fb5c69fa9e25dab95684844b4c962a2cf1bf183eb4690e"
+    },
+    "python": {
+        "version": "3.11.0",
+        "comment": ""
+    },
+    "swig": {
+        "version": "4.1.1",
+        "comment": ""
+    }
+}

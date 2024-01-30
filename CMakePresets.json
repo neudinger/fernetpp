@@ -1,0 +1,70 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 27,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "debug",
+            "displayName": "Debug Build",
+            "generator": "Ninja",
+            "description": "Sets up a debug build that uses the default compiler and generator",
+            "environment": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CXX": "g++",
+                "fernet_VERSION": "0.0.0.0"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BUILD_SHARED_LIBS": "OFF",
+                "LTO": "ON",
+                "FETCHCONTENT_QUIET": "OFF",
+                "FETCHCONTENT_BASE_DIR": "${sourceDir}/.external_Fernet_${presetName}",
+                "CPACK_OUTPUT_FILE_PREFIX": "${sourceDir}/dist_Fernet_${presetName}",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist_Fernet_${presetName}"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release Build",
+            "generator": "Ninja",
+            "description": "Sets up a release build that uses the default compiler and generator",
+            "environment": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CXX": "g++",
+                "fernet_VERSION": "$penv{fernet_VERSION}"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_SHARED_LIBS": "OFF",
+                "LTO": "ON",
+                "FETCHCONTENT_QUIET": "OFF",
+                "FETCHCONTENT_BASE_DIR": "${sourceDir}/.external_Fernet_${presetName}",
+                "CPACK_OUTPUT_FILE_PREFIX": "${sourceDir}/dist_Fernet_${presetName}",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist_Fernet_${presetName}"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "jobs": 8,
+            "targets": [
+                "Fernet",
+                "Fernet.exe"
+            ]
+        },
+        {
+            "name": "release",
+            "configurePreset": "release",
+            "jobs": 8,
+            "targets": [
+                "Fernet",
+                "Fernet.exe"
+            ]
+        }
+    ]
+}
