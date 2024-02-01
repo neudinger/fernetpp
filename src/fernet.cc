@@ -1,9 +1,9 @@
 #include <format>
 #include <ranges>
-#include <memory> // std::unique_ptr
+#include <memory>    // std::unique_ptr
 #include <algorithm> // std::count
 
-#include <cstring> // strnlen
+#include <cstring> // memcpy
 #include <cassert> // assert
 
 #include <openssl/core_names.h> // OSSL_MAC_PARAM_DIGEST
@@ -32,6 +32,7 @@ inline constexpr byte operator"" _byte(unsigned long long arg) noexcept
 
 // This document describes version 0x80 (currently the only version) of the fernet format.
 static byte constexpr FERNET_VERSION{128_uint8_t},
+    CYPHER_BLOCK_SIZE{16_uint8_t},
     VERSION_SIZE{sizeof(byte)},
     TIME_SIZE{sizeof(std::time_t)},
     NONCE_SIZE{16_uint8_t},
@@ -40,8 +41,8 @@ static byte constexpr FERNET_VERSION{128_uint8_t},
 
 typedef union byte_time
 {
-    byte const *_timestamps_bytes_c; //[sizeof(uint64_t)];
-    byte *_timestamps_bytes;         //[sizeof(uint64_t)];
+    byte const *_timestamps_bytes_c;
+    byte *_timestamps_bytes;
     int64_t *_timestamps;
     byte_time(int64_t *timestamps) : _timestamps(timestamps) {}
     byte_time(Fernet::secure_string::const_iterator const &token_it) : _timestamps_bytes_c(reinterpret_cast<byte const *>(token_it.base())) {}
@@ -49,59 +50,49 @@ typedef union byte_time
 } byte_time;
 
 static inline uint64_t calcDecodeLength(Fernet::secure_string const &b64input)
-{ // Calculates the length of a decoded string
-    uint64_t len{0UL}, padding{0UL};
+{
+    uint64_t const len{b64input.size()};
 
-    if (not(len = strnlen(b64input.data(), std::ssize(b64input))) or std::empty(b64input))
+    if (not len)
         throw std::runtime_error("b64input is empty");
 
-    if (b64input[len - 1UL] == '=' && b64input[len - 2UL] == '=') // last two chars are =
-        padding = 2UL;
-    else if (b64input[len - 1UL] == '=') // last char is =
-        padding = 1UL;
+    uint64_t const padding(std::count(b64input.end() - 4, b64input.end(), '='));
 
-    return (len * 3UL) / 4UL - padding;
+    return (((len * 3UL) / 4UL) - padding);
 }
-static inline Fernet::secure_string base64Decode(Fernet::secure_string const &b64message,
-                                                 uint64_t const paddingsize = 0)
+static inline Fernet::secure_string base64Decode(Fernet::secure_string const &b64message)
 {
     Fernet::secure_string outbuffer;
-    if (std::empty(b64message))
+
+    if (b64message.empty())
         throw std::bad_array_new_length();
 
-    uint64_t decodeBlocksize{0UL};
-    uint64_t const decodeLen{calcDecodeLength(b64message) + 2UL};
+    uint64_t const decodeLen{calcDecodeLength(b64message)};
 
-    outbuffer.resize(decodeLen, 0);
-    if ((decodeBlocksize = EVP_DecodeBlock(reinterpret_cast<byte *>(std::data(outbuffer)),
-                                           reinterpret_cast<byte const *>(b64message.data()),
-                                           static_cast<int>(strnlen(b64message.c_str(), std::ssize(b64message))))) > decodeLen or
-        decodeBlocksize < decodeLen - 2UL)
-        throw std::runtime_error(std::format("EVP_DecodeBlock not correctly decoded decodeBlocksize={} decodeLen={}", decodeBlocksize, decodeLen));
-
-    outbuffer.resize(decodeBlocksize - paddingsize);
+    outbuffer.resize(decodeLen + 2UL, '\0');
+    if (EVP_DecodeBlock(reinterpret_cast<byte *>(outbuffer.data()),
+                        reinterpret_cast<byte const *>(b64message.data()),
+                        static_cast<int>(b64message.size())) == -1)
+        throw std::runtime_error(std::format("EVP_DecodeBlock not correctly decoded : can not decode the base64 of {}", b64message.c_str()));
+    outbuffer.resize(decodeLen);
     return outbuffer;
 }
 static inline Fernet::secure_string base64Encode(Fernet::secure_string const &input)
-{ // Encodes a binary safe base 64 string
+{
     Fernet::secure_string outbuffer;
 
-    if (std::empty(input) and not std::size(input))
+    if (not input.size())
         throw std::bad_array_new_length();
 
-    uint64_t const encoded_size{4UL * ((std::ssize(input) + 2UL) / 3UL) + 1UL};
-    outbuffer.reserve(encoded_size);
-    outbuffer.resize(encoded_size - 1, 0);
+    uint64_t const encoded_size{4UL * ((input.size() + 2UL) / 3UL)};
+    outbuffer.resize(encoded_size, '\0');
 
     using EVP_EncodeBlock_rt = std::invoke_result<decltype(&EVP_EncodeBlock), unsigned char *, const unsigned char *, int>::type;
 
-    if (EVP_EncodeBlock(reinterpret_cast<byte *>(std::data(outbuffer)),
+    if (EVP_EncodeBlock(reinterpret_cast<byte *>(outbuffer.data()),
                         reinterpret_cast<byte const *>(input.data()),
-                        static_cast<int>(std::ssize(input))) not_eq static_cast<EVP_EncodeBlock_rt>(encoded_size - 1UL))
-    {
-        perror("EVP_EncodeBlock not correctly encoded\n");
-        throw std::bad_alloc();
-    }
+                        static_cast<int>(input.size())) not_eq static_cast<EVP_EncodeBlock_rt>(encoded_size))
+        throw std::runtime_error("EVP_EncodeBlock not correctly encoded");
     return outbuffer;
 }
 static inline void init()
@@ -112,12 +103,7 @@ static inline void init()
     EVP_add_cipher(EVP_aes_128_cbc_hmac_sha256());
     ERR_load_crypto_strings();
 }
-static inline void nonce_setup(byte *nonce)
-{
-    if (not RAND_bytes(nonce, NONCE_SIZE))
-        throw std::runtime_error("RAND_bytes for iv failed");
-}
-static Fernet::secure_string urlsafe_base64Encode(Fernet::secure_string const &input)
+static inline Fernet::secure_string urlsafe_base64Encode(Fernet::secure_string const &input)
 {
     auto standard_b64(base64Encode(input));
     for (auto &val : standard_b64)
@@ -135,11 +121,9 @@ static Fernet::secure_string urlsafe_base64Encode(Fernet::secure_string const &i
 
     return standard_b64;
 }
-static Fernet::secure_string urlsafe_base64Decode(Fernet::secure_string const &input)
+static inline Fernet::secure_string urlsafe_base64Decode(Fernet::secure_string const &input)
 {
-
     auto urlsafe_b64(input);
-
     for (auto &val : urlsafe_b64)
         switch (val)
         {
@@ -153,144 +137,132 @@ static Fernet::secure_string urlsafe_base64Decode(Fernet::secure_string const &i
             break;
         }
 
-    uint64_t const
-        paddingsize(std::count(urlsafe_b64.end() - 4, urlsafe_b64.end(), '=')),
-        padding_required{4UL - ((strnlen(urlsafe_b64.c_str(), std::ssize(urlsafe_b64)) - paddingsize) % 4)};
-
-    if (not(padding_required == paddingsize))
+    if (urlsafe_b64.size() % 4UL)
         for ([[maybe_unused]] auto const &_ :
-             std::ranges::iota_view{0UL, padding_required - paddingsize})
+             std::ranges::iota_view{0UL, (4UL - (urlsafe_b64.size() % 4UL))})
         {
             std::ignore = _;
             urlsafe_b64.append("=");
         }
-    return base64Decode(urlsafe_b64, padding_required);
+    return base64Decode(urlsafe_b64);
 }
-static inline Fernet::secure_string HMAC_SHA256(Fernet::secure_string const &data,
-                                                Fernet::secure_string const &key)
+static inline std::array<byte, HMAC_SIZE> HMAC_SHA256(Fernet::secure_string const &data,
+                                                      Fernet::secure_string const &key)
 {
-    Fernet::secure_string digest;
+    std::array<byte, HMAC_SIZE> digest{0};
 
 #if not defined(NDEBUG)
     uint32_t static const digest_length{static_cast<uint32_t>(EVP_MD_size(EVP_sha256()))};
-    assert(HMAC_SIZE == digest_length);
+    assert(HMAC_SIZE == digest_length && "HMAC_SIZE == digest_length must be equal");
 #endif
-
-    digest.resize(HMAC_SIZE, 0);
 
     OSSL_LIB_CTX_unique_ptr library_context(OSSL_LIB_CTX_new(), ::OSSL_LIB_CTX_free);
     EVP_MAC_unique_ptr mac_alg(EVP_MAC_fetch(library_context.get(), "HMAC", NULL), ::EVP_MAC_free);
     EVP_MAC_CTX_unique_ptr mac_ctx(EVP_MAC_CTX_new(mac_alg.get()), ::EVP_MAC_CTX_free);
-
-    size_t out_len{0};
     std::string_view static const digest_name{"SHA256"};
     std::array const ossl_params{OSSL_PARAM_construct_utf8_string(OSSL_MAC_PARAM_DIGEST,
-                                                                  const_cast<char *>(std::data(digest_name)),
+                                                                  const_cast<char *>(digest_name.data()),
                                                                   digest_name.size()),
                                  OSSL_PARAM_construct_end()};
-
-    /* Initialise the HMAC operation */
+    size_t out_len{0};
+    /* Initialise the HMAC SHA256 operation */
     if (not EVP_MAC_init(mac_ctx.get(),
-                         reinterpret_cast<byte const *>(std::data(key)),
-                         16, ossl_params.data() /* params */))
+                         reinterpret_cast<byte const *>(key.data()),
+                         key.size(), ossl_params.data()))
         throw std::runtime_error("EVP_MAC_init() failed");
 
     /* Make one or more calls to process the data to be authenticated */
     if (not EVP_MAC_update(mac_ctx.get(),
-                           reinterpret_cast<byte const *>(std::data(data)),
+                           reinterpret_cast<byte const *>(data.data()),
                            data.size()))
         throw std::runtime_error("EVP_MAC_update() failed");
 
     /* Make a call to the final with a NULL buffer to get the length of the MAC */
-    if (!EVP_MAC_final(mac_ctx.get(), NULL, &out_len, 0))
+    if (not EVP_MAC_final(mac_ctx.get(), NULL, &out_len, 0))
         throw std::runtime_error("EVP_MAC_final() failed");
 
     /* Make one call to the final to get the MAC */
-    if (!EVP_MAC_final(mac_ctx.get(),
-                       reinterpret_cast<byte *>(std::data(digest)),
-                       &out_len, out_len))
-    {
+    if (not EVP_MAC_final(mac_ctx.get(),
+                          reinterpret_cast<byte *>(digest.data()),
+                          &out_len, out_len))
         throw std::runtime_error("EVP_MAC_final() failed");
-    }
 
     if (out_len not_eq HMAC_SIZE)
         throw std::runtime_error("Generated MAC has an unexpected length");
 
     return digest;
 }
-static inline Fernet::secure_string gen_nonce()
+static inline std::array<byte, NONCE_SIZE> gen_nonce()
 {
-    Fernet::secure_string nonce;
-    nonce.resize(NONCE_SIZE);
-    if (not RAND_bytes(reinterpret_cast<byte *>(std::data(nonce)), NONCE_SIZE))
+    std::array<byte, NONCE_SIZE> nonce{0};
+    if (not RAND_bytes(reinterpret_cast<byte *>(nonce.data()), NONCE_SIZE))
         throw std::runtime_error("RAND_bytes for iv failed");
     return nonce;
 }
 static inline Fernet::secure_string AES_128_CBC_decrypt(Fernet::secure_string const &key,
-                                                        Fernet::secure_string const &nonce,
+                                                        std::array<byte, NONCE_SIZE> const &nonce,
                                                         Fernet::secure_string const &ctext)
 {
-    Fernet::secure_string rtext;
-    EVP_CIPHER_CTX_unique_ptr ctx(EVP_CIPHER_CTX_new(), ::EVP_CIPHER_CTX_free);
+    Fernet::secure_string raw_text;
+    EVP_CIPHER_CTX_unique_ptr cipher_ctx(EVP_CIPHER_CTX_new(), ::EVP_CIPHER_CTX_free);
     int outlen{0}, outlen2{0};
 
-    if (not EVP_DecryptInit_ex(ctx.get(), EVP_aes_128_cbc(), NULL,
+    if (not EVP_DecryptInit_ex(cipher_ctx.get(), EVP_aes_128_cbc(), NULL,
                                reinterpret_cast<byte const *>(key.data()),
                                reinterpret_cast<byte const *>(nonce.data())))
         throw std::runtime_error("EVP_DecryptInit_ex failed");
 
-    rtext.resize(ctext.size(), 0);
+    raw_text.resize(ctext.size(), '\0');
 
-    if (not EVP_DecryptUpdate(ctx.get(),
-                              reinterpret_cast<byte *>(std::data(rtext)),
+    if (not EVP_DecryptUpdate(cipher_ctx.get(),
+                              reinterpret_cast<byte *>(raw_text.data()),
                               &outlen,
                               reinterpret_cast<byte const *>(ctext.data()),
                               static_cast<int>(ctext.size())))
         throw std::runtime_error("EVP_DecryptUpdate failed");
 
-    if (not EVP_DecryptFinal_ex(ctx.get(),
-                                reinterpret_cast<byte *>(std::data(rtext)) + outlen,
+    if (not EVP_DecryptFinal_ex(cipher_ctx.get(),
+                                reinterpret_cast<byte *>(raw_text.data()) + outlen,
                                 &outlen2))
         throw std::runtime_error("EVP_DecryptFinal_ex failed");
 
-    // Set recovered text size now that we know it
-    rtext.resize(outlen + outlen2);
-    return rtext;
+    raw_text.resize(outlen + outlen2);
+    return raw_text;
 }
 static inline Fernet::secure_string AES_128_CBC_encrypt(Fernet::secure_string const &key,
-                                                        Fernet::secure_string const &nonce,
+                                                        std::array<byte, NONCE_SIZE> const &nonce,
                                                         Fernet::secure_string const &ptext)
 {
-    Fernet::secure_string ctext;
-    EVP_CIPHER_CTX_unique_ptr ctx(EVP_CIPHER_CTX_new(), ::EVP_CIPHER_CTX_free);
-
+    Fernet::secure_string cypher_text;
+    EVP_CIPHER_CTX_unique_ptr const ctx(EVP_CIPHER_CTX_new(), ::EVP_CIPHER_CTX_free);
     int outlen{0}, outlen2{0};
 
+#if not defined(NDEBUG)
     static uint64_t const cipher_block_size{static_cast<uint64_t>(EVP_CIPHER_block_size(EVP_aes_128_cbc()))};
-    uint64_t const buffer_size{ptext.size() + cipher_block_size};
-    ctext.resize(buffer_size);
+    assert(cipher_block_size == CYPHER_BLOCK_SIZE && "cipher_block_size == CYPHER_BLOCK_SIZE must be equal");
+#endif
 
     if (not EVP_EncryptInit_ex2(ctx.get(), EVP_aes_128_cbc(),
                                 reinterpret_cast<byte const *>(key.data()),
                                 reinterpret_cast<byte const *>(nonce.data()), NULL))
         throw std::runtime_error("EVP_EncryptInit_ex2 failed");
 
+    uint64_t const cipher_text_len{ptext.size() + CYPHER_BLOCK_SIZE - (ptext.size() % CYPHER_BLOCK_SIZE)};
+    cypher_text.resize(cipher_text_len, '\0');
+
     if (not EVP_EncryptUpdate(ctx.get(),
-                              reinterpret_cast<byte *>(std::data(ctext)),
+                              reinterpret_cast<byte *>(cypher_text.data()),
                               &outlen,
-                              reinterpret_cast<byte const *>(std::data(ptext)),
+                              reinterpret_cast<byte const *>(ptext.data()),
                               static_cast<int>(ptext.size())))
         throw std::runtime_error("EVP_EncryptUpdate failed");
 
     if (not EVP_EncryptFinal_ex(ctx.get(),
-                                reinterpret_cast<byte *>(std::data(ctext)) + outlen,
+                                reinterpret_cast<byte *>(cypher_text.data()) + outlen,
                                 &outlen2))
         throw std::runtime_error("EVP_EncryptFinal_ex failed");
 
-    // Set cipher text size now that we know it
-    ctext.resize(outlen + outlen2);
-
-    return ctext;
+    return cypher_text;
 }
 static inline int64_t timestamp_byteswap(int64_t const &timestamp)
 {
@@ -300,17 +272,26 @@ static inline int64_t timestamp_byteswap(int64_t const &timestamp)
     return _timestamp;
 }
 
+
+
 Fernet::Fernet(Fernet::secure_string const &key) : _key(urlsafe_base64Decode(key))
 {
-    if (std::ssize(this->_key) not_eq 32UL)
-        throw std::runtime_error(std::format("key must be exactly 32 curent key size: {}", this->_key));
+    if (this->_key.size() not_eq 32UL)
+        throw std::runtime_error(std::format("key must be exactly 32 curent key size: {}", this->_key.size()));
+}
+Fernet::secure_string Fernet::gen_rand_key()
+{
+    std::array<char, KEY_SIZE> keys{0};
+    if (not RAND_bytes(reinterpret_cast<byte *>(keys.data()), KEY_SIZE))
+        throw std::runtime_error("RAND_bytes for iv failed");
+    return urlsafe_base64Encode({keys.data(), keys.size()});
 }
 Fernet::secure_string Fernet::encrypt(Fernet::secure_string const &plain_text,
-                                      std::time_t const current_time)
+                                      std::time_t const current_time) const
 {
     assert(FERNET_VERSION == 128_uint8_t);
-    int64_t time{timestamp_byteswap(current_time)};
-    byte_time timestamp_view(&time);
+    int64_t timestamp{timestamp_byteswap(current_time)};
+    byte_time const timestamp_view(&timestamp);
 
     Fernet::secure_string token;
     token.reserve(VERSION_SIZE +
@@ -319,34 +300,33 @@ Fernet::secure_string Fernet::encrypt(Fernet::secure_string const &plain_text,
                   (plain_text.size() + NONCE_SIZE) +
                   HMAC_SIZE);
 
-    token.resize(VERSION_SIZE, 0);
+    token.resize(VERSION_SIZE, '\0');
     token[0] = FERNET_VERSION;
 
-    std::span timestamp_range_view{timestamp_view._timestamps_bytes_c, TIME_SIZE};
+    std::span<const byte, TIME_SIZE> const timestamp_range_view{timestamp_view._timestamps_bytes_c, TIME_SIZE};
     std::copy_n(timestamp_range_view.begin(), TIME_SIZE, std::back_inserter(token));
-    Fernet::secure_string const nonce{gen_nonce()};
+    
+    std::array<byte, NONCE_SIZE> const nonce{gen_nonce()};
     std::copy_n(nonce.begin(), NONCE_SIZE, std::back_inserter(token));
 
     auto const enc_key_view{this->_key | std::views::drop(16)};
     Fernet::secure_string const cypher_text{AES_128_CBC_encrypt(/* key  */ {enc_key_view.data(), enc_key_view.size()},
                                                                 /* nonce  */ nonce,
                                                                 /* ptext  */ plain_text)};
-
-    token.resize(token.size() + cypher_text.size());
-
-    std::memcpy(std::data(token) + (VERSION_SIZE + TIME_SIZE + NONCE_SIZE),
+    token.resize(token.size() + cypher_text.size(), '\0');
+    std::memcpy(token.data() + (VERSION_SIZE + TIME_SIZE + NONCE_SIZE),
                 cypher_text.data(), cypher_text.size());
 
-    Fernet::secure_string const hash{HMAC_SHA256(token, this->_key)};
-
-    std::copy_n(hash.begin(), HMAC_SIZE, std::back_inserter(token));
+    auto const hmac_key_view{this->_key | std::views::take(16)};
+    std::array<byte, HMAC_SIZE> const hmac_sha256_digest{HMAC_SHA256(token, {hmac_key_view.data(), hmac_key_view.size()})};
+    std::copy_n(hmac_sha256_digest.begin(), HMAC_SIZE, std::back_inserter(token));
 
     return urlsafe_base64Encode(token);
 }
 
 Fernet::secure_string Fernet::decrypt(Fernet::secure_string const &token,
-                                      int64_t ttl,
-                                      std::time_t current_time)
+                                      int64_t const ttl,
+                                      std::time_t current_time) const
 {
     Fernet::secure_string const decoded_token{urlsafe_base64Decode(token)};
 
@@ -357,11 +337,8 @@ Fernet::secure_string Fernet::decrypt(Fernet::secure_string const &token,
         version not_eq FERNET_VERSION)
         throw std::runtime_error("Fernet version not know");
 
-    Fernet::secure_string nonce;
-    nonce.reserve(NONCE_SIZE);
-    std::copy_n(decoded_token.begin() + (VERSION_SIZE + TIME_SIZE),
-                NONCE_SIZE,
-                std::back_inserter(nonce));
+    std::array<byte, NONCE_SIZE> nonce;
+    std::memcpy(nonce.data(), decoded_token.data() + (VERSION_SIZE + TIME_SIZE), NONCE_SIZE);
 
     auto const token_timestamp_view{decoded_token |
                                     std::views::drop(VERSION_SIZE) |
@@ -375,24 +352,20 @@ Fernet::secure_string Fernet::decrypt(Fernet::secure_string const &token,
     Fernet::secure_string const token_data{std::string_view(decoded_token.begin(),
                                                             decoded_token.end() - HMAC_SIZE)};
 
-    Fernet::secure_string hash_computed;
-    hash_computed.reserve(HMAC_SIZE);
+    auto const hmac_key_view{this->_key | std::views::take(16)};
+    std::array<byte, HMAC_SIZE> const &hmac_sha256_computed{HMAC_SHA256(token_data, {hmac_key_view.data(), hmac_key_view.size()})};
 
-    std::ranges::copy(HMAC_SHA256(token_data, this->_key), std::back_inserter(hash_computed));
-
-    Fernet::secure_string const hash_recieved{std::string_view(decoded_token.end() - HMAC_SIZE,
-                                                               decoded_token.end())};
-
-    if (not std::ranges::equal(hash_computed, hash_recieved))
-        throw std::runtime_error(std::format("hash_computed {} not eq hash_recieved {}", hash_computed, hash_recieved));
+    auto const hash_recieved_view{decoded_token | std::views::drop(decoded_token.size() - HMAC_SIZE)};
+    if (not std::ranges::equal(hmac_sha256_computed, hash_recieved_view,
+                               [](byte const left, byte const right) -> bool
+                               { return left == right; }))
+        throw std::runtime_error(std::format("hash_computed are not eq to the hash_recieved "));
 
     Fernet::secure_string const cypher_text{std::string_view(decoded_token.begin() +
                                                                  VERSION_SIZE +
                                                                  TIME_SIZE +
                                                                  NONCE_SIZE,
                                                              decoded_token.end() - HMAC_SIZE)};
-
     auto const enc_key_view{this->_key | std::views::drop(16)};
-
     return AES_128_CBC_decrypt({enc_key_view.data(), enc_key_view.size()}, nonce, cypher_text);
 }

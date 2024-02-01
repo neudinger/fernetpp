@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.27)
 
+# https://www.kitware.com/static-checks-with-cmake-cdash-iwyu-clang-tidy-lwyu-cpplint-and-cppcheck/
+
 if("$ENV{Fernet_VERSION}" STREQUAL "")
   set(Fernet_VERSION 0.0.0.0)
   message(
@@ -106,6 +108,8 @@ target_compile_features(${TARGET_NAME_EXE}
 
 add_library(${PROJECT_NAME} ${SOURCES_LIB})
 add_library(Fernet::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+target_compile_features(${PROJECT_NAME}
+                        PRIVATE cxx_std_${CMAKE_CXX_STANDARD})
 
 include(IPO)
 

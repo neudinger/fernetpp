@@ -36,22 +36,19 @@ public:
     pointer address(reference v) const { return &v; }
     const_pointer address(const_reference v) const { return &v; }
 
-    pointer allocate(size_type n /* , const void *hint = 0 */)
+    pointer allocate(size_type n) const
     {
         if (n > std::numeric_limits<size_type>::max() / sizeof(T))
             throw std::bad_alloc();
         return static_cast<pointer>(OPENSSL_secure_zalloc(n * sizeof(value_type)));
-        // return static_cast<pointer>(::operator new(n * sizeof(value_type)));
     }
 
-    void deallocate(pointer p, size_type n)
+    void deallocate(pointer p, size_type n) const
     {
         OPENSSL_secure_clear_free(p, n * sizeof(T));
-        // OPENSSL_cleanse(p, n * sizeof(T));
-        // ::operator delete(p);
     }
 
-    size_type max_size() const
+    size_type max_size(void) const
     {
         return std::numeric_limits<size_type>::max() / sizeof(T);
     }
@@ -62,13 +59,13 @@ public:
         typedef zallocator<U> other;
     };
     template <typename U, typename... Args>
-    void construct(U *ptr, Args &&...args)
+    void construct(U *ptr, Args &&...args) const
     {
         ::new (static_cast<void *>(ptr)) U(std::forward<Args>(args)...);
     }
 
     template <typename U>
-    void destroy(U *ptr)
+    void destroy(U *ptr) const
     {
         ptr->~U();
     }
@@ -79,19 +76,25 @@ typedef struct Fernet
     using secure_string = std::basic_string<char, std::char_traits<char>, zallocator<char>>;
 
 private:
-    secure_string _key;
+    secure_string const _key;
 
 public:
-    ~Fernet() = default;
+    ~Fernet(void) = default;
     Fernet(Fernet const &) = delete;
     Fernet(secure_string const &);
 
+    // https://en.wikipedia.org/wiki/Const_(computer_programming)
+    // http://duramecho.com/ComputerInformation/WhyHowCppConst.html
+    // https://google.github.io/styleguide/cppguide.html#Use_of_const
+
     secure_string encrypt(secure_string const &plain_text,
-                          std::time_t current_time = std::time(nullptr));
+                          std::time_t current_time = std::time(nullptr)) const;
 
     secure_string decrypt(secure_string const &token,
                           int64_t ttl = 0U,
-                          std::time_t current_time = std::time(nullptr));
+                          std::time_t current_time = std::time(nullptr)) const;
+
+    static secure_string gen_rand_key();
 
 } Fernet;
 
