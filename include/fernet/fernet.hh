@@ -21,6 +21,8 @@
 // In this case we will use scrypt to generate the encryption key from a salt value and a password.
 // To generate the same encryption key we need the salt value and the password
 
+// https://docs.oracle.com/cd/E19205-01/819-3703/15_3.htm
+// https://en.cppreference.com/w/cpp/named_req/Allocator
 template <typename T>
 struct zallocator
 {
@@ -33,6 +35,15 @@ public:
     typedef std::size_t size_type;
     typedef std::ptrdiff_t difference_type;
 
+    zallocator() noexcept
+    {
+    }
+
+    template <class U>
+    zallocator(const zallocator<U> &) noexcept
+    {
+    }
+
     pointer address(reference v) const { return &v; }
     const_pointer address(const_reference v) const { return &v; }
 
@@ -41,6 +52,13 @@ public:
         if (n > std::numeric_limits<size_type>::max() / sizeof(T))
             throw std::bad_alloc();
         return static_cast<pointer>(OPENSSL_secure_zalloc(n * sizeof(value_type)));
+    }
+
+    pointer operator=(pointer p)
+    {
+        if (std::size(p) > std::numeric_limits<size_type>::max() / sizeof(T))
+            throw std::bad_alloc();
+        return static_cast<pointer>(OPENSSL_secure_zalloc(std::size(p) * sizeof(value_type)));
     }
 
     void deallocate(pointer p, size_type n) const
@@ -70,6 +88,12 @@ public:
         ptr->~U();
     }
 };
+
+template <class T, class U>
+constexpr bool operator==(const zallocator<T> &, const zallocator<U> &) noexcept { return true; }
+
+template <class T, class U>
+constexpr bool operator!=(const zallocator<T> &lhs, const zallocator<U> &rhs) noexcept { return not ::operator==(lhs, rhs); }
 
 typedef struct Fernet
 {

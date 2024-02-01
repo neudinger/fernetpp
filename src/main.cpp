@@ -52,6 +52,9 @@ int main()
         Fernet::secure_string ptext = "Now is the time for all good men to come to the aide of their country";
         Fernet::secure_string fernet_token = fernet.encrypt(ptext);
         Fernet::secure_string data = fernet.decrypt(fernet_token);
+        Fernet::secure_string pptext;
+        pptext = data;
+        std::cout << "pptext " << pptext << std::endl; 
         std::cout << std::boolalpha << std::ranges::equal(ptext, data) << std::endl;
     }
     return 0;
