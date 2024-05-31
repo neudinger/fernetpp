@@ -2,7 +2,7 @@
     "version": 3,
     "cmakeMinimumRequired": {
         "major": 3,
-        "minor": 27,
+        "minor": 25,
         "patch": 0
     },
     "configurePresets": [
@@ -17,6 +17,12 @@
                 "fernet_VERSION": "0.0.0.0"
             },
             "cacheVariables": {
+                "_CMAKE_CXX_CLANG_TIDY": "clang-tidy-18;-fix",
+                "_CMAKE_CXX_CPPCHECK": "ON",
+                "_CMAKE_CXX_CPPLINT": "ON",
+                "_CMAKE_CXX_INCLUDE_WHAT_YOU_USE": "include-what-you-use",
+                "_CMAKE_CXX_COMPILER_LAUNCHER": "ccache;namespace=myproject;sloppiness=time_macros",
+                "CMAKE_LINK_WHAT_YOU_USE": "ON",
                 "CMAKE_BUILD_TYPE": "Debug",
                 "BUILD_SHARED_LIBS": "OFF",
                 "LTO": "ON",
@@ -37,6 +43,7 @@
                 "fernet_VERSION": "$penv{fernet_VERSION}"
             },
             "cacheVariables": {
+                "LINK_WHAT_YOU_USE": "ON",
                 "CMAKE_BUILD_TYPE": "Release",
                 "BUILD_SHARED_LIBS": "OFF",
                 "LTO": "ON",

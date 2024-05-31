@@ -9,15 +9,15 @@
 #  ifndef FERNET_EXPORT
 #    ifdef Fernet_EXPORTS
         /* We are building this library */
-#      define FERNET_EXPORT __attribute__((visibility("default")))
+#      define FERNET_EXPORT 
 #    else
         /* We are using this library */
-#      define FERNET_EXPORT __attribute__((visibility("default")))
+#      define FERNET_EXPORT 
 #    endif
 #  endif
 
 #  ifndef FERNET_NO_EXPORT
-#    define FERNET_NO_EXPORT __attribute__((visibility("hidden")))
+#    define FERNET_NO_EXPORT 
 #  endif
 #endif
 
