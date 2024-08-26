@@ -47,3 +47,5 @@ dist_*/
 .external_*/
 # Documentation generated
 documentation/docs
+# Dev dir
+.devcontainer/

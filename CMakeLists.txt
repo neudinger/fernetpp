@@ -25,7 +25,7 @@ if("$ENV{Fernet_VERSION}" STREQUAL "")
   set(Fernet_VERSION 0.0.0.0)
   message(
     WARNING
-    "Setup Fernet_VERSION in your environement variable default ${Fernet_VERSION} will bet set to Fernet_VERSION variable"
+    "Setup Fernet_VERSION in your environement variable default ${Fernet_VERSION} will be set to Fernet_VERSION variable"
   )
 else()
   set(Fernet_VERSION $ENV{Fernet_VERSION})
@@ -63,8 +63,8 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake
 include(OpenSSL)
 include(JSONParser)
 
-file(READ ${CMAKE_SOURCE_DIR}/requirements.json requirementsJSON)
-sbeparsejson(dependencies requirementsJSON)
+# file(READ ${CMAKE_CURRENT_SOURCE_DIR}/requirements.json requirementsJSON)
+# sbeparsejson(dependencies requirementsJSON)
 
 set(OPENSSL_USE_STATIC_LIBS ON)
 set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
@@ -253,4 +253,4 @@ include(Packaging)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "openssl (>= 3.0.0)")
 include(CPack)
 
-sbeclearjson(dependencies)
+# sbeclearjson(dependencies)
