@@ -3,7 +3,8 @@
 #include <openssl/core_names.h> // OSSL_MAC_PARAM_DIGEST
 #include <openssl/rand.h>       // RAND_bytes
 #include <openssl/err.h>        // ERR_load_crypto_strings
-
+#include <expected>
+#include <bit>
 #include <format>
 #include <ranges>
 #include <memory>    // std::unique_ptr
