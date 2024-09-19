@@ -109,7 +109,7 @@ base64Encode(Fernet::secure_string const &input) noexcept
     return outbuffer;
 }
 
-[[noreturn]] [[using gnu: always_inline, hot]]
+[[using gnu: always_inline, hot]]
 static inline void
 init()
 {
