@@ -140,7 +140,7 @@ typedef struct [[nodiscard]] Fernet final
     using secure_string = std::basic_string<char, std::char_traits<char>, zallocator<char>>;
 
 private:
-    secure_string const _key;
+    std::string const _key;
 
 public:
     ~Fernet(void) = default;
